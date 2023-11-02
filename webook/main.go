@@ -9,11 +9,11 @@ import (
 	"go_learning/internal/service"
 	"go_learning/internal/web"
 	"go_learning/internal/web/middleware"
+	ratelimit "go_learning/pkg/ginx/middleware/retelimit"
 
 	"github.com/gin-contrib/cors"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -55,8 +55,8 @@ func initWebServer() *gin.Engine {
 		//AllowOrigins:     []string{"http://localhost:3000"},
 		AllowCredentials: true,
 
-		AllowHeaders: []string{"Content-Type"},
-		//AllowHeaders: []string{"content-type"},
+		AllowHeaders:  []string{"Content-Type", "Authorization"},
+		ExposeHeaders: []string{"x-jwt-token"},
 		//AllowMethods: []string{"POST"},
 		AllowOriginFunc: func(origin string) bool {
 			if strings.HasPrefix(origin, "http://localhost") {
@@ -70,11 +70,31 @@ func initWebServer() *gin.Engine {
 		println("这是我的 Middleware")
 	})
 
-	login := middleware.LoginMiddlewareBuilder{}
-	// 存储数据的，也就是你 userId 存哪里
-	// 直接存 cookie
-	store := cookie.NewStore([]byte("secret"))
-	server.Use(sessions.Sessions("ssid", store), login.CheckLogin())
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
+	server.Use(ratelimit.NewBuilder(redisClient, time.Second, 20).Build())
+
+	// useSession(server)
+	useJWT(server)
 
 	return server
 }
+
+func useJWT(server *gin.Engine) {
+	login := middleware.LoginJWTMiddlewareBuilder{}
+	server.Use(login.CheckLogin())
+}
+
+//func useSession(server *gin.Engine) {
+//	login := middleware.LoginMiddlewareBuilder{}
+//	store, err := redis.NewStore(16, "tcp",
+//		"localhost:6379", "",
+//		[]byte("k6CswdUm75WKcbM68UQUuxVsHSpTCwgK"),
+//		[]byte("k6CswdUm75WKcbM68UQUuxVsHSpTCwgA"))
+//	if err != nil {
+//		panic(err)
+//	}
+//	server.Use(sessions.Sessions("ssid", store), login.CheckLogin())
+//}

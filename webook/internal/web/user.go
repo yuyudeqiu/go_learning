@@ -8,6 +8,7 @@ import (
 	"go_learning/internal/service"
 
 	regexp "github.com/dlclark/regexp2"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -36,7 +37,8 @@ func NewUserHandler(svc *service.UserService) *UserHandler {
 func (h *UserHandler) RegisterRoutes(server *gin.Engine) {
 	ug := server.Group("/users")
 	ug.POST("/signup", h.SignUp)
-	ug.POST("/login", h.Login)
+	// ug.POST("/login", h.Login)
+	ug.POST("/login", h.LoginJWT)
 	ug.POST("/edit", h.Edit)
 	ug.GET("/profile", h.Profile)
 }
@@ -119,6 +121,41 @@ func (h *UserHandler) Login(ctx *gin.Context) {
 
 }
 
+func (h *UserHandler) LoginJWT(ctx *gin.Context) {
+	type Req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	var req Req
+	if err := ctx.Bind(&req); err != nil {
+		return
+	}
+	u, err := h.svc.Login(ctx, req.Email, req.Password)
+	switch err {
+	case nil:
+		uc := UserClaims{
+			Uid:       u.Id,
+			UserAgent: ctx.GetHeader("User-Agent"),
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			},
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS512, uc)
+		tokenStr, err := token.SignedString(JWTKey)
+		if err != nil {
+			ctx.String(http.StatusOK, "系统错误")
+			return
+		}
+		ctx.Header("x-jwt-token", tokenStr)
+		ctx.String(http.StatusOK, "登录成功")
+	case service.ErrInvalidUserOrPassword:
+		ctx.String(http.StatusOK, "用户名或密码不对")
+	default:
+		ctx.String(http.StatusOK, "系统错误")
+	}
+
+}
+
 func (h *UserHandler) Edit(ctx *gin.Context) {
 	type Req struct {
 		Nickname    string `json:"nickname"`
@@ -129,8 +166,9 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 	if err := ctx.Bind(&req); err != nil {
 		return
 	}
-	sess := sessions.Default(ctx)
-	userId := sess.Get("userId").(int64)
+	// sess := sessions.Default(ctx)
+	// userId := sess.Get("userId").(int64)
+	userId := ctx.GetInt64("userId")
 
 	birthday, err := time.Parse("2006-01-02", req.Birthday)
 	if err != nil {
@@ -153,13 +191,26 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 }
 
 func (h *UserHandler) Profile(ctx *gin.Context) {
-	sess := sessions.Default(ctx)
-	userId := sess.Get("userId").(int64)
-	user, err := h.svc.Profile(ctx, userId)
+	// sess := sessions.Default(ctx)
+	// userId := sess.Get("userId").(int64)
+	user, _ := ctx.Get("user")
+	uc, ok := user.(UserClaims)
+	if !ok {
+		ctx.String(http.StatusOK, "系统错误")
+	}
+	user, err := h.svc.Profile(ctx, uc.Uid)
 	switch err {
 	case nil:
 		ctx.JSON(http.StatusOK, user)
 	default:
 		ctx.String(http.StatusOK, "系统错误")
 	}
+}
+
+var JWTKey = []byte("k6CswdUm77WKcbM68UQUuxVsHSpTCwgK")
+
+type UserClaims struct {
+	jwt.RegisteredClaims
+	Uid       int64
+	UserAgent string
 }

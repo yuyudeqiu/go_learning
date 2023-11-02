@@ -37,7 +37,7 @@ func (dao *UserDAO) Insert(ctx context.Context, u User) error {
 			return ErrDuplicateEmail
 		}
 	}
-	return dao.db.WithContext(ctx).Create(&u).Error
+	return nil
 }
 
 func (dao *UserDAO) FindByEmail(ctx *gin.Context, email string) (User, error) {
