@@ -1,9 +1,11 @@
 package main
 
 import (
+	"net/http"
 	"strings"
 	"time"
 
+	"go_learning/config"
 	"go_learning/internal/repository"
 	"go_learning/internal/repository/dao"
 	"go_learning/internal/service"
@@ -23,7 +25,10 @@ func main() {
 
 	server := initWebServer()
 	initUserHdl(db, server)
-	server.Run(":8080")
+	server.GET("/hello", func(ctx *gin.Context) {
+		ctx.String(http.StatusOK, "hello world")
+	})
+	server.Run(":8081")
 }
 
 func initUserHdl(db *gorm.DB, server *gin.Engine) {
@@ -35,7 +40,8 @@ func initUserHdl(db *gorm.DB, server *gin.Engine) {
 }
 
 func initDB() *gorm.DB {
-	db, err := gorm.Open(mysql.Open("root:root@tcp(localhost:13316)/webook"))
+	// "root:root@tcp(localhost:13316)/webook"
+	db, err := gorm.Open(mysql.Open(config.Config.DB.DSN))
 	if err != nil {
 		panic(err)
 	}
@@ -70,8 +76,9 @@ func initWebServer() *gin.Engine {
 		println("这是我的 Middleware")
 	})
 
+	// "localhost:6379"
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: config.Config.Redis.Addr,
 	})
 
 	server.Use(ratelimit.NewBuilder(redisClient, time.Second, 20).Build())
