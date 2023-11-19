@@ -7,11 +7,13 @@ import (
 
 	"go_learning/config"
 	"go_learning/internal/repository"
+	"go_learning/internal/repository/cache"
 	"go_learning/internal/repository/dao"
 	"go_learning/internal/service"
+	"go_learning/internal/service/localsms"
+	"go_learning/internal/service/sms"
 	"go_learning/internal/web"
 	"go_learning/internal/web/middleware"
-	ratelimit "go_learning/pkg/ginx/middleware/retelimit"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -23,20 +25,33 @@ import (
 func main() {
 	db := initDB()
 
+	redisClient := redis.NewClient(&redis.Options{Addr: config.Config.Redis.Addr})
 	server := initWebServer()
-	initUserHdl(db, server)
+	codeSvc := initCodeSvc(redisClient)
+	initUserHdl(db, redisClient, codeSvc, server)
 	server.GET("/hello", func(ctx *gin.Context) {
 		ctx.String(http.StatusOK, "hello world")
 	})
 	server.Run(":8081")
 }
 
-func initUserHdl(db *gorm.DB, server *gin.Engine) {
+func initUserHdl(db *gorm.DB, redisClient redis.Cmdable, codeSvc *service.CodeService, server *gin.Engine) {
 	ud := dao.NewUserDAO(db)
-	ur := repository.NewUserRepository(ud)
+	uc := cache.NewUserCache(redisClient)
+	ur := repository.NewUserRepository(ud, uc)
 	us := service.NewUserService(ur)
-	hdl := web.NewUserHandler(us)
+	hdl := web.NewUserHandler(us, codeSvc)
 	hdl.RegisterRoutes(server)
+}
+
+func initCodeSvc(redisClient redis.Cmdable) *service.CodeService {
+	cc := cache.NewCodeCache(redisClient)
+	crepo := repository.NewCodeRepository(cc)
+	return service.NewCodeService(crepo, initMemorySms())
+}
+
+func initMemorySms() sms.Service {
+	return localsms.NewService()
 }
 
 func initDB() *gorm.DB {
@@ -77,11 +92,10 @@ func initWebServer() *gin.Engine {
 	})
 
 	// "localhost:6379"
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: config.Config.Redis.Addr,
-	})
-
-	server.Use(ratelimit.NewBuilder(redisClient, time.Second, 20).Build())
+	//redisClient := redis.NewClient(&redis.Options{
+	//	Addr: config.Config.Redis.Addr,
+	//})
+	//server.Use(ratelimit.NewBuilder(redisClient, time.Second, 20).Build())
 
 	// useSession(server)
 	useJWT(server)

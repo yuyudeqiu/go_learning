@@ -62,3 +62,17 @@ func (svc *UserService) Profile(ctx *gin.Context, id int64) (domain.User, error)
 func (svc *UserService) EditProfile(ctx *gin.Context, user domain.User) error {
 	return svc.repo.UpdateNonZeroFields(ctx, user)
 }
+
+func (svc *UserService) FindOrCreate(ctx context.Context, phone string) (domain.User, error) {
+	u, err := svc.repo.FindByPhone(ctx, phone)
+	if err != repository.ErrUserNotFound {
+		// err == nil, u 是可用的
+		// err != nil，系统错误，
+		return u, err
+	}
+	err = svc.repo.Create(ctx, domain.User{Phone: phone})
+	if err != nil && err != repository.ErrDuplicateEmail {
+		return domain.User{}, err
+	}
+	return svc.repo.FindByPhone(ctx, phone)
+}
