@@ -11,12 +11,17 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type UserCache struct {
+type UserCache interface {
+	Get(ctx *gin.Context, uid int64) (domain.User, error)
+	Set(ctx *gin.Context, du domain.User) error
+}
+
+type RedisUserCache struct {
 	cmd        redis.Cmdable
 	expiration time.Duration
 }
 
-func (c *UserCache) Get(ctx *gin.Context, uid int64) (domain.User, error) {
+func (c *RedisUserCache) Get(ctx *gin.Context, uid int64) (domain.User, error) {
 	key := c.key(uid)
 	data, err := c.cmd.Get(ctx, key).Result()
 	if err != nil {
@@ -28,11 +33,11 @@ func (c *UserCache) Get(ctx *gin.Context, uid int64) (domain.User, error) {
 	return u, err
 }
 
-func (c *UserCache) key(uid int64) string {
+func (c *RedisUserCache) key(uid int64) string {
 	return fmt.Sprintf("user.info.%d", uid)
 }
 
-func (c *UserCache) Set(ctx *gin.Context, du domain.User) error {
+func (c *RedisUserCache) Set(ctx *gin.Context, du domain.User) error {
 	key := c.key(du.Id)
 	data, err := json.Marshal(du)
 	if err != nil {
@@ -41,8 +46,8 @@ func (c *UserCache) Set(ctx *gin.Context, du domain.User) error {
 	return c.cmd.Set(ctx, key, data, c.expiration).Err()
 }
 
-func NewUserCache(cmd redis.Cmdable) *UserCache {
-	return &UserCache{
+func NewUserCache(cmd redis.Cmdable) UserCache {
+	return &RedisUserCache{
 		cmd:        cmd,
 		expiration: time.Minute * 15,
 	}
