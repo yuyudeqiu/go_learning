@@ -1,19 +1,21 @@
 package cache
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"go_learning/internal/domain"
 
-	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
 
+var ErrKeyNotExists = redis.Nil
+
 type UserCache interface {
-	Get(ctx *gin.Context, uid int64) (domain.User, error)
-	Set(ctx *gin.Context, du domain.User) error
+	Get(ctx context.Context, uid int64) (domain.User, error)
+	Set(ctx context.Context, du domain.User) error
 }
 
 type RedisUserCache struct {
@@ -21,7 +23,7 @@ type RedisUserCache struct {
 	expiration time.Duration
 }
 
-func (c *RedisUserCache) Get(ctx *gin.Context, uid int64) (domain.User, error) {
+func (c *RedisUserCache) Get(ctx context.Context, uid int64) (domain.User, error) {
 	key := c.key(uid)
 	data, err := c.cmd.Get(ctx, key).Result()
 	if err != nil {
@@ -37,7 +39,7 @@ func (c *RedisUserCache) key(uid int64) string {
 	return fmt.Sprintf("user.info.%d", uid)
 }
 
-func (c *RedisUserCache) Set(ctx *gin.Context, du domain.User) error {
+func (c *RedisUserCache) Set(ctx context.Context, du domain.User) error {
 	key := c.key(du.Id)
 	data, err := json.Marshal(du)
 	if err != nil {

@@ -8,8 +8,6 @@ import (
 	"go_learning/internal/domain"
 	"go_learning/internal/repository/cache"
 	"go_learning/internal/repository/dao"
-
-	"github.com/gin-gonic/gin"
 )
 
 var (
@@ -19,10 +17,10 @@ var (
 
 type UserRepository interface {
 	Create(ctx context.Context, u domain.User) error
-	FindByEmail(ctx *gin.Context, email string) (domain.User, error)
+	FindByEmail(ctx context.Context, email string) (domain.User, error)
 	FindByPhone(ctx context.Context, phone string) (domain.User, error)
-	FindById(ctx *gin.Context, id int64) (domain.User, error)
-	UpdateNonZeroFields(ctx *gin.Context, user domain.User) error
+	FindById(ctx context.Context, id int64) (domain.User, error)
+	UpdateNonZeroFields(ctx context.Context, user domain.User) error
 }
 
 type CacheUserRepository struct {
@@ -41,7 +39,7 @@ func (repo *CacheUserRepository) Create(ctx context.Context, u domain.User) erro
 	return repo.dao.Insert(ctx, repo.toEntity(u))
 }
 
-func (repo *CacheUserRepository) FindByEmail(ctx *gin.Context, email string) (domain.User, error) {
+func (repo *CacheUserRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
 	u, err := repo.dao.FindByEmail(ctx, email)
 	if err != nil {
 		return domain.User{}, err
@@ -57,7 +55,7 @@ func (repo *CacheUserRepository) FindByPhone(ctx context.Context, phone string) 
 	return repo.toDomain(u), nil
 }
 
-func (repo *CacheUserRepository) FindById(ctx *gin.Context, id int64) (domain.User, error) {
+func (repo *CacheUserRepository) FindById(ctx context.Context, id int64) (domain.User, error) {
 	du, err := repo.cache.Get(ctx, id)
 	if err == nil {
 		return du, nil
@@ -71,7 +69,7 @@ func (repo *CacheUserRepository) FindById(ctx *gin.Context, id int64) (domain.Us
 	return du, nil
 }
 
-func (repo *CacheUserRepository) UpdateNonZeroFields(ctx *gin.Context, user domain.User) error {
+func (repo *CacheUserRepository) UpdateNonZeroFields(ctx context.Context, user domain.User) error {
 	return repo.dao.UpdateById(ctx, repo.toEntity(user))
 }
 
@@ -84,6 +82,7 @@ func (repo *CacheUserRepository) toDomain(u dao.User) domain.User {
 		Phone:       u.Phone.String,
 		Password:    u.Password,
 		Description: u.Description,
+		Ctime:       time.UnixMilli(u.Ctime),
 	}
 }
 
@@ -95,5 +94,6 @@ func (repo *CacheUserRepository) toEntity(user domain.User) dao.User {
 		Email:       sql.NullString{String: user.Email, Valid: user.Email != ""},
 		Phone:       sql.NullString{String: user.Phone, Valid: user.Phone != ""},
 		Description: user.Description,
+		Ctime:       user.Ctime.UnixMilli(),
 	}
 }
