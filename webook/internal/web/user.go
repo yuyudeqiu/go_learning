@@ -8,8 +8,6 @@ import (
 	"go_learning/internal/service"
 
 	regexp "github.com/dlclark/regexp2"
-	"github.com/golang-jwt/jwt/v5"
-
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -21,6 +19,7 @@ const (
 )
 
 type UserHandler struct {
+	jwtHandler
 	emailRexExp    *regexp.Regexp
 	passwordRexExp *regexp.Regexp
 	svc            service.UserService
@@ -255,30 +254,4 @@ func (h *UserHandler) Profile(ctx *gin.Context) {
 	default:
 		ctx.String(http.StatusOK, "系统错误")
 	}
-}
-
-func (h *UserHandler) setJWTToken(ctx *gin.Context, uid int64) {
-	uc := UserClaims{
-		Uid:       uid,
-		UserAgent: ctx.GetHeader("User-Agent"),
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS512, uc)
-	tokenStr, err := token.SignedString(JWTKey)
-	if err != nil {
-		ctx.String(http.StatusOK, "系统错误")
-		return
-	}
-	ctx.Header("x-jwt-token", tokenStr)
-
-}
-
-var JWTKey = []byte("k6CswdUm77WKcbM68UQUuxVsHSpTCwgK")
-
-type UserClaims struct {
-	jwt.RegisteredClaims
-	Uid       int64
-	UserAgent string
 }

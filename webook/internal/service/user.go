@@ -7,7 +7,6 @@ import (
 	"go_learning/internal/domain"
 	"go_learning/internal/repository"
 
-	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -18,10 +17,11 @@ var (
 
 type UserService interface {
 	Signup(ctx context.Context, u domain.User) error
-	Login(ctx *gin.Context, email string, password string) (domain.User, error)
-	Profile(ctx *gin.Context, id int64) (domain.User, error)
-	EditProfile(ctx *gin.Context, user domain.User) error
+	Login(ctx context.Context, email string, password string) (domain.User, error)
+	Profile(ctx context.Context, id int64) (domain.User, error)
+	EditProfile(ctx context.Context, user domain.User) error
 	FindOrCreate(ctx context.Context, phone string) (domain.User, error)
+	FindOrCreateWechat(ctx context.Context, info domain.WechatInfo) (domain.User, error)
 }
 
 type userService struct {
@@ -43,7 +43,7 @@ func (svc *userService) Signup(ctx context.Context, u domain.User) error {
 	return svc.repo.Create(ctx, u)
 }
 
-func (svc *userService) Login(ctx *gin.Context, email string, password string) (domain.User, error) {
+func (svc *userService) Login(ctx context.Context, email string, password string) (domain.User, error) {
 	u, err := svc.repo.FindByEmail(ctx, email)
 	if err == repository.ErrUserNotFound {
 		return domain.User{}, ErrInvalidUserOrPassword
@@ -59,7 +59,7 @@ func (svc *userService) Login(ctx *gin.Context, email string, password string) (
 	return u, nil
 }
 
-func (svc *userService) Profile(ctx *gin.Context, id int64) (domain.User, error) {
+func (svc *userService) Profile(ctx context.Context, id int64) (domain.User, error) {
 	user, err := svc.repo.FindById(ctx, id)
 	if err != nil {
 		return domain.User{}, err
@@ -67,7 +67,7 @@ func (svc *userService) Profile(ctx *gin.Context, id int64) (domain.User, error)
 	return user, nil
 }
 
-func (svc *userService) EditProfile(ctx *gin.Context, user domain.User) error {
+func (svc *userService) EditProfile(ctx context.Context, user domain.User) error {
 	return svc.repo.UpdateNonZeroFields(ctx, user)
 }
 
@@ -83,4 +83,18 @@ func (svc *userService) FindOrCreate(ctx context.Context, phone string) (domain.
 		return domain.User{}, err
 	}
 	return svc.repo.FindByPhone(ctx, phone)
+}
+
+func (svc *userService) FindOrCreateWechat(ctx context.Context, wechatInfo domain.WechatInfo) (domain.User, error) {
+	u, err := svc.repo.FindByWechat(ctx, wechatInfo.OpenId)
+	if err != repository.ErrUserNotFound {
+		return u, err
+	}
+	err = svc.repo.Create(ctx, domain.User{
+		WechatInfo: wechatInfo,
+	})
+	if err != nil && err != repository.ErrDuplicateEmail {
+		return domain.User{}, err
+	}
+	return svc.repo.FindByWechat(ctx, wechatInfo.OpenId)
 }
