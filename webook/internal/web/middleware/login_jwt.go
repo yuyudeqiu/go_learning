@@ -1,18 +1,20 @@
 package middleware
 
 import (
-	"log"
 	"net/http"
-	"strings"
-	"time"
 
-	"go_learning/internal/web"
+	ijwt "go_learning/internal/web/jwt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type LoginJWTMiddlewareBuilder struct {
+	ijwt.Handler
+}
+
+func NewLoginJWTMiddlewareBuilder(hdl ijwt.Handler) *LoginJWTMiddlewareBuilder {
+	return &LoginJWTMiddlewareBuilder{Handler: hdl}
 }
 
 func (m *LoginJWTMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
@@ -27,19 +29,11 @@ func (m *LoginJWTMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
 			return
 		}
 
-		authCode := ctx.GetHeader("Authorization")
-		if authCode == "" {
-			ctx.AbortWithStatus(http.StatusUnauthorized)
-		}
-		segs := strings.Split(authCode, " ")
-		if len(segs) != 2 {
-			ctx.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-		tokenStr := segs[1]
-		var uc web.UserClaims
+		tokenStr := m.ExtractToken(ctx)
+
+		var uc ijwt.UserClaims
 		token, err := jwt.ParseWithClaims(tokenStr, &uc, func(token *jwt.Token) (interface{}, error) {
-			return web.JWTKey, nil
+			return ijwt.JWTKey, nil
 		})
 		if err != nil {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
@@ -48,19 +42,13 @@ func (m *LoginJWTMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
 		if token == nil || !token.Valid {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 		}
-		if uc.UserAgent != ctx.GetHeader("User-Agent") {
+
+		err = m.CheckSession(ctx, uc.Ssid)
+		if err != nil {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		expireTime := uc.ExpiresAt
-		if expireTime.Sub(time.Now()) < time.Minute*15 {
-			uc.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Hour))
-			tokenStr, err = token.SignedString(web.JWTKey)
-			ctx.Header("x-jwt-token", tokenStr)
-			if err != nil {
-				log.Println(err)
-			}
-		}
+
 		ctx.Set("user", uc)
 	}
 }

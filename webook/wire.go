@@ -8,6 +8,7 @@ import (
 	"go_learning/internal/repository/dao"
 	"go_learning/internal/service"
 	"go_learning/internal/web"
+	ijwt "go_learning/internal/web/jwt"
 	"go_learning/ioc"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,7 @@ func InitWebServer() *gin.Engine {
 		service.NewCodeService,
 
 		web.NewUserHandler,
+		ijwt.NewRedisJWTHandler,
 
 		ioc.InitGinMiddlewares,
 		ioc.InitWebService,

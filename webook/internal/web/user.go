@@ -6,10 +6,12 @@ import (
 
 	"go_learning/internal/domain"
 	"go_learning/internal/service"
+	ijwt "go_learning/internal/web/jwt"
 
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -19,19 +21,20 @@ const (
 )
 
 type UserHandler struct {
-	jwtHandler
+	ijwt.Handler
 	emailRexExp    *regexp.Regexp
 	passwordRexExp *regexp.Regexp
 	svc            service.UserService
 	codeSvc        service.CodeService
 }
 
-func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserHandler {
+func NewUserHandler(svc service.UserService, hdl ijwt.Handler, codeSvc service.CodeService) *UserHandler {
 	return &UserHandler{
 		emailRexExp:    regexp.MustCompile(emailRegexPattern, regexp.None),
 		passwordRexExp: regexp.MustCompile(passwordRegexPattern, regexp.None),
 		svc:            svc,
 		codeSvc:        codeSvc,
+		Handler:        hdl,
 	}
 }
 
@@ -40,8 +43,11 @@ func (h *UserHandler) RegisterRoutes(server *gin.Engine) {
 	ug.POST("/signup", h.SignUp)
 	// ug.POST("/login", h.Login)
 	ug.POST("/login", h.LoginJWT)
+	ug.POST("/logout", h.LogoutJWT)
 	ug.POST("/edit", h.Edit)
 	ug.GET("/profile", h.Profile)
+	ug.GET("/refresh_token", h.RefreshToken)
+
 	// 验证码登录
 	ug.POST("/login_sms/code/send", h.LoginSMSLoginCode)
 	ug.POST("/login_sms", h.LoginSMS)
@@ -73,7 +79,11 @@ func (h *UserHandler) LoginSMS(ctx *gin.Context) {
 		})
 		return
 	}
-	h.setJWTToken(ctx, u.Id)
+	err = h.SetLoginToken(ctx, u.Id)
+	if err != nil {
+		ctx.String(http.StatusOK, "系统错误")
+		return
+	}
 	ctx.JSON(http.StatusOK, Result{Msg: "登录成功"})
 }
 
@@ -195,7 +205,11 @@ func (h *UserHandler) LoginJWT(ctx *gin.Context) {
 	u, err := h.svc.Login(ctx, req.Email, req.Password)
 	switch err {
 	case nil:
-		h.setJWTToken(ctx, u.Id)
+		err = h.SetLoginToken(ctx, u.Id)
+		if err != nil {
+			ctx.String(http.StatusOK, "系统错误")
+			return
+		}
 		ctx.String(http.StatusOK, "登录成功")
 	case service.ErrInvalidUserOrPassword:
 		ctx.String(http.StatusOK, "用户名或密码不对")
@@ -243,7 +257,7 @@ func (h *UserHandler) Profile(ctx *gin.Context) {
 	// sess := sessions.Default(ctx)
 	// userId := sess.Get("userId").(int64)
 	user, _ := ctx.Get("user")
-	uc, ok := user.(UserClaims)
+	uc, ok := user.(ijwt.UserClaims)
 	if !ok {
 		ctx.String(http.StatusOK, "系统错误")
 	}
@@ -254,4 +268,42 @@ func (h *UserHandler) Profile(ctx *gin.Context) {
 	default:
 		ctx.String(http.StatusOK, "系统错误")
 	}
+}
+
+func (h *UserHandler) LogoutJWT(ctx *gin.Context) {
+	err := h.ClearToken(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{Code: 5, Msg: "系统错误"})
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{Msg: "退出登录成功"})
+}
+
+func (h *UserHandler) RefreshToken(ctx *gin.Context) {
+	tokenStr := h.ExtractToken(ctx)
+	var rc ijwt.RefreshClaims
+	token, err := jwt.ParseWithClaims(tokenStr, &rc, func(token *jwt.Token) (interface{}, error) {
+		return ijwt.RCJWTKey, nil
+	})
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	if token == nil || !token.Valid {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	err = h.CheckSession(ctx, rc.Ssid)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	err = h.SetJWTToken(ctx, rc.Uid, rc.Ssid)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{Msg: "OK"})
 }
